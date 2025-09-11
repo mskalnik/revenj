@@ -6,29 +6,29 @@ lazy val core = (project in file("revenj-core")
   settings (commonSettings ++ publishSettings)
   enablePlugins(SbtDslPlatformPlugin)
   settings(
-    version := "1.7.0",
+    version := "1.8.0",
     libraryDependencies ++= Seq(
-      "org.postgresql" % "postgresql" % "42.7.4",
+      "org.postgresql" % "postgresql" % "42.7.7",
       "joda-time" % "joda-time" % "2.13.0",   // TODO: will be removed
       "org.joda" % "joda-convert" % "2.2.3", // TODO: will be removed
       "org.scala-lang" % "scala-reflect" % scalaVersion.value,
       "io.monix" %% "monix-reactive" % "3.4.1",
       "org.scala-lang.modules" %% "scala-xml" % "2.3.0",
       "com.dslplatform" %% "dsl-json-scala" % "2.0.2",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.18.0",
-      "com.fasterxml.jackson.datatype" % "jackson-datatype-joda" % "2.18.0",
-      "com.fasterxml.jackson.datatype" % "jackson-datatype-jdk8" % "2.18.0",
-      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.18.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.18.3",
+      "com.fasterxml.jackson.datatype" % "jackson-datatype-joda" % "2.18.3",
+      "com.fasterxml.jackson.datatype" % "jackson-datatype-jdk8" % "2.18.3",
+      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.18.3",
       "org.specs2" %% "specs2-scalacheck" % "4.20.8" % Test,
     ),
-    dslResourcePath in (Test, DSL) := Some((resourceDirectory in Test).value / "META-INF" / "services")
+    Test / DSL / dslResourcePath := Some((Test / resourceDirectory).value / "META-INF" / "services")
   )
 )
 
 lazy val akka = (project in file("revenj-akka")
   settings (commonSettings ++ publishSettings)
   settings(
-  version := "1.7.0",
+  version := "1.8.0",
   libraryDependencies ++= Seq(
       "com.typesafe" % "config" % "1.4.3",
       "com.typesafe.akka" %% "akka-http" % "10.2.10",
@@ -41,7 +41,7 @@ lazy val akka = (project in file("revenj-akka")
 lazy val storage = (project in file("revenj-storage")
   settings (commonSettings ++ publishSettings)
   settings(
-    version := "1.7.0",
+    version := "1.8.0",
     libraryDependencies ++= Seq(
       "software.amazon.awssdk" % "s3" % "2.29.21",
       "org.specs2" %% "specs2-scalacheck" % "4.20.8" % Test,
@@ -60,16 +60,15 @@ lazy val tests = (project in file("tests")
     libraryDependencies ++= Seq(
       "com.dslplatform" % "dsl-clc" % "2.1.0" % Test,
       "org.specs2" %% "specs2-scalacheck" % "4.20.8" % Test,
-      "org.pgscala.embedded" %% "pgscala-embedded" % "0.3.0-0-SNAPSHOT" % Test,
-      "ch.qos.logback" % "logback-classic" % "1.5.8" % Test,
+      "io.zonky.test" % "embedded-postgres" % "2.1.1" % Test,
+      "ch.qos.logback" % "logback-classic" % "1.2.11" % Test,
     ),
-    resolvers += Resolver.sonatypeRepo("snapshots"), // remove after pgscala-embedded confirmed working
-    dslNamespace in (Test, DSL) := "example",
-    dslDslPath in (Test, DSL) := Seq((resourceDirectory in Test).value),
-    dslSettings in (Test, DSL) := Seq(Settings.Option.JACKSON, Settings.Option.JODA_TIME, Settings.Option.URI_REFERENCE),
-    dslSources in (Test, DSL) += (Targets.Option.REVENJ_SCALA -> sourceManaged.value),
-    dslResourcePath in (Test, DSL) := Some((resourceDirectory in Test).value / "META-INF" / "services"),
-    dslAnsi in (Test, DSL) := false,
+    Test / DSL / dslNamespace := "example",
+    Test / DSL / dslDslPath := Seq((Test / resourceDirectory).value),
+    Test / DSL / dslSettings := Seq(Settings.Option.JACKSON, Settings.Option.JODA_TIME, Settings.Option.URI_REFERENCE),
+    Test / DSL / dslSources += (Targets.Option.REVENJ_SCALA -> sourceManaged.value),
+    Test / DSL / dslResourcePath := Some((Test / resourceDirectory).value / "META-INF" / "services"),
+    Test / DSL / dslAnsi := false,
     publishLocal := {},
     publish := {},
     publishArtifact := false
@@ -96,7 +95,7 @@ lazy val commonSettings = Defaults.coreDefaultSettings ++ Seq(
   //resolvers += Resolver.mavenLocal,
 
   scalaVersion := crossScalaVersions.value.head,
-  crossScalaVersions := Seq("2.13.14"),
+  crossScalaVersions := Seq("2.13.16"),
   scalacOptions ++= Seq(
     "-deprecation",
     "-encoding", "UTF-8",
@@ -104,7 +103,6 @@ lazy val commonSettings = Defaults.coreDefaultSettings ++ Seq(
     "-language:_",
     "-target:jvm-1.8",
     "-unchecked",
-    "-Xfuture",
     "-Xlint:_",
     "-Xverify",
     "-Yrangepos",
@@ -114,14 +112,14 @@ lazy val commonSettings = Defaults.coreDefaultSettings ++ Seq(
     "-opt:_"
   ),
 
-  unmanagedSourceDirectories in Compile := Seq((javaSource in Compile).value) ++ Seq((scalaSource in Compile).value),
-  unmanagedSourceDirectories in Test := Seq((scalaSource in Test).value)
+  Compile / unmanagedSourceDirectories := Seq((Compile / javaSource).value) ++ Seq((Compile / scalaSource).value),
+  Test / unmanagedSourceDirectories := Seq((Test / scalaSource).value)
 )
 
 // ### PUBLISH SETTINGS ###
 
 val publishSettings = Seq(
-  scalacOptions in(Compile, doc) ++= Seq(
+  Compile / doc / scalacOptions ++= Seq(
     "-no-link-warnings",
     "-sourcepath", baseDirectory.value.toString,
     "-doc-source-url", if (isSnapshot.value) {
@@ -135,8 +133,12 @@ val publishSettings = Seq(
     ("Implementation-Vendor", "New Generation Software Ltd.")
   )),
 
-  publishTo := Some(if (isSnapshot.value) Opts.resolver.sonatypeSnapshots else Opts.resolver.sonatypeStaging),
-  publishArtifact in Test := false,
+  publishTo := {
+    val nexus = "https://ossrh-staging-api.central.sonatype.com/"
+    if (isSnapshot.value) Some("Sonatype OSS Snapshots" at nexus + "content/repositories/snapshots")
+    else Some("OSSRH Staging API Service" at nexus + "service/local/staging/deploy/maven2")
+  },
+  Test / publishArtifact := false,
   publishMavenStyle := true,
   pomIncludeRepository := { _ => false },
 

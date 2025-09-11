@@ -5,14 +5,18 @@ import com.dslplatform.compiler.client.Context;
 import com.dslplatform.compiler.client.Main;
 import com.dslplatform.compiler.client.parameters.*;
 import gen.model.Boot;
+import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.revenj.extensibility.Container;
-import ru.yandex.qatools.embed.service.PostgresEmbeddedService;
 
 import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Properties;
 
@@ -47,17 +51,20 @@ public abstract class Setup {
 		}
 	}
 
-	private static PostgresEmbeddedService postgres;
+	private static EmbeddedPostgres postgres;
+	public static String getUrl() {
+		return "jdbc:postgresql://localhost:" + postgres.getPort() + "/revenj?user=postgres&password=postgres";
+	}
 
 	@BeforeClass
-	public static void setupDatabase() throws IOException {
+	public static void setupDatabase() throws IOException, SQLException {
 		postgres = database();
 	}
 
 	@AfterClass
-	public static void teardownDatabase() {
+	public static void teardownDatabase() throws IOException {
 		if (postgres != null) {
-			postgres.stop();
+			postgres.close();
 			postgres = null;
 		}
 	}
@@ -74,20 +81,23 @@ public abstract class Setup {
 		container.close();
 	}
 
-	public static PostgresEmbeddedService database() throws IOException {
-		PostgresEmbeddedService postgres = new PostgresEmbeddedService("localhost", 5555, "revenj", "revenj", "revenj", "target/db", true, 5000);
-		postgres.start();
-		try {
-			Thread.sleep(200);
-		} catch (InterruptedException e) {
-			throw new IOException(e);
-		}
+	public static EmbeddedPostgres database() throws IOException, SQLException {
+		EmbeddedPostgres postgres = EmbeddedPostgres.builder()
+				.setPort(0)
+				.start();
+
+        try (Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:" + postgres.getPort() + "/postgres", "postgres", "postgres")) {
+            try (Statement stmt = connection.createStatement()) {
+                stmt.execute("CREATE DATABASE revenj ENCODING 'utf8' TEMPLATE template1");
+            }
+        }
+
 		TestContext context = new TestContext();
 		context.put(Download.INSTANCE, null);
 		context.put(Force.INSTANCE, null);
 		context.put(ApplyMigration.INSTANCE, null);
 		context.put(DisablePrompt.INSTANCE, null);
-		context.put(PostgresConnection.INSTANCE, "localhost:5555/revenj?user=revenj&password=revenj");
+		context.put(PostgresConnection.INSTANCE, "localhost:" + postgres.getPort() + "/revenj?user=postgres&password=postgres");
 		context.put(DslPath.INSTANCE, "src/test/resources");
 		List<CompileParameter> params = Main.initializeParameters(context, ".");
 		if (!Main.processContext(context, params)) {
@@ -105,11 +115,11 @@ public abstract class Setup {
 	}
 
 	public static Container container() throws IOException {
-		return (Container) Boot.configure("jdbc:postgresql://localhost:5555/revenj?user=revenj&password=revenj");
+		return (Container) Boot.configure(getUrl());
 	}
 
 	public static Container container(Properties properties) throws IOException {
-		return (Container) Boot.configure("jdbc:postgresql://localhost:5555/revenj?user=revenj&password=revenj", properties);
+		return (Container) Boot.configure(getUrl(), properties);
 	}
 
 }

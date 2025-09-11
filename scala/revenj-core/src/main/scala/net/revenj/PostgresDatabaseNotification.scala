@@ -4,9 +4,7 @@ import java.io.{Closeable, IOException}
 import java.sql.{Connection, SQLException, Statement}
 import java.util.Properties
 import javax.sql.DataSource
-import monix.execution.Cancelable
 import monix.reactive.Observable
-import monix.reactive.observers.Subscriber
 import monix.reactive.subjects.PublishSubject
 import net.revenj.database.postgres.PostgresReader
 import net.revenj.database.postgres.converters.StringConverter
@@ -50,6 +48,7 @@ private [revenj] class PostgresDatabaseNotification(
       }
     } else 1000
   }
+
   if ("disabled" == properties.getProperty("revenj.notifications.status")) {
     isClosed = true
   } else if ("polling" == properties.getProperty("revenj.notifications.type")) {
@@ -196,18 +195,6 @@ private [revenj] class PostgresDatabaseNotification(
     }
   }
 
-  private def hostSpecs(props: Properties) = {
-    val hosts = props.getProperty("PGHOST").split(",")
-    val ports = props.getProperty("PGPORT").split(",")
-    val hostSpecs = new Array[HostSpec](hosts.length)
-    var i = 0
-    while (i < hostSpecs.length) {
-      hostSpecs(i) = new HostSpec(hosts(i), ports(i).toInt)
-      i += 1
-    }
-    hostSpecs
-  }
-
   private def setupListening() = {
     retryCount += 1
     if (retryCount > 60) retryCount = 30
@@ -238,7 +225,9 @@ Either disable notifications (revenj.notifications.status=disabled), change it t
       newProps.setProperty(PGProperty.USER.getName, user)
       newProps.setProperty(PGProperty.PASSWORD.getName, password)
       newProps.setProperty(PGProperty.PG_DBNAME.getName, db)
-      newProps.setProperty(PGProperty.APPLICATION_NAME.getName, applicationName)
+      if (applicationName != null) {
+        newProps.setProperty(PGProperty.APPLICATION_NAME.getName, applicationName)
+      }
       val pgStream = new ConnectionFactoryRevenj().openConnection(Array(host), newProps)
       currentStream = Some(pgStream)
       retryCount = 0

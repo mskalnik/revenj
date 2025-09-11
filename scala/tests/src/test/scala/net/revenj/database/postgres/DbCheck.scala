@@ -2,12 +2,13 @@ package net.revenj.database.postgres
 
 import java.awt.Point
 import java.awt.geom.Point2D
-import java.io.{File, IOException}
+import java.io.IOException
 import java.sql.{Connection, DriverManager}
 import java.util.UUID
 
 import com.dslplatform.compiler.client.parameters._
 import com.dslplatform.compiler.client.{Context, Main}
+import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import example.test.Client.Tick
 import example.test._
 import example.test.postgres._
@@ -15,16 +16,11 @@ import javax.sql.DataSource
 import monix.eval.Task
 import monix.execution.Ack
 import monix.reactive.{Observable, Observer}
-import net.revenj.database.postgres.converters.IntConverter
-import net.revenj.database.postgres.DbCheck.{Db, MyService}
+import net.revenj.database.postgres.DbCheck.MyService
 import net.revenj.extensibility.{Container, InstanceScope, SystemState}
 import net.revenj.patterns.DataChangeNotification.NotifyInfo
 import net.revenj.patterns._
-import org.pgscala.embedded.{PostgresCluster, PostgresVersion}
-import org.postgresql.copy.CopyManager
-import org.postgresql.core.BaseConnection
 import org.specs2.ScalaCheck
-import org.specs2.concurrent.ExecutionEnv
 import org.specs2.matcher.FutureMatchers
 import org.specs2.mutable.Specification
 import org.specs2.specification.BeforeAfterAll
@@ -36,7 +32,7 @@ import scala.util.{Failure, Random, Success, Try}
 class DbCheck extends Specification with BeforeAfterAll with ScalaCheck with FutureMatchers {
   sequential
 
-  var tryDb: Try[PostgresCluster] = _
+  var tryDb: Try[EmbeddedPostgres] = _
 
   def beforeAll(): Unit = {
     tryDb = DbCheck.setupDatabase()
@@ -44,11 +40,11 @@ class DbCheck extends Specification with BeforeAfterAll with ScalaCheck with Fut
 
   def afterAll(): Unit = {
     if (tryDb.isSuccess) {
-      tryDb.get.stop()
+      tryDb.get.close()
     }
   }
 
-  val jdbcUrl = s"jdbc:postgresql://${Db.Address}:${Db.Port}/${Db.Name}?user=${Db.Role}&password=${Db.Pass}"
+  lazy val jdbcUrl = s"jdbc:postgresql://localhost:${tryDb.map(_.getPort).getOrElse(5555)}/revenj?user=postgres&password=postgres"
   implicit val ec: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global
   implicit val duration: Duration.Infinite = Duration.Inf
 
@@ -662,35 +658,19 @@ object DbCheck {
     }
   }
 
-  object Db {
-    val Address = "127.0.0.1"
-    val Port = 5555
-
-    val Catalog = "postgres"
-    val Name = "revenj"
-
-    val Role = "revenj"
-    val Pass = "revenj"
-  }
-
-  def setupDatabase(): Try[PostgresCluster] = {
+  def setupDatabase(): Try[EmbeddedPostgres] = {
     try {
       // initialise cluster
-      val postgres = new PostgresCluster(PostgresVersion.`11`, new File("target/dbcheck").getCanonicalFile, Map(
-        "listen_addresses" -> s"'${Db.Address}'",
-        "port" -> s"${Db.Port}",
-      ))
-      postgres.initialize(Db.Role, Db.Pass)
-      val (_, clusterReady) = postgres.start()
-      Await.result(clusterReady, 60.seconds)
+      val postgres = EmbeddedPostgres.builder()
+        .setPort(0)
+        .start()
 
       // initialise the role & database
-      Class.forName("org.postgresql.Driver")
-      val connection = DriverManager.getConnection(s"jdbc:postgresql://${Db.Address}:${Db.Port}/${Db.Catalog}?user=${Db.Role}&password=${Db.Pass}")
+      val connection = DriverManager.getConnection(s"jdbc:postgresql://localhost:${postgres.getPort}/postgres", "postgres", "postgres")
       try {
         val stmt = connection.createStatement()
         try {
-          stmt.execute(s"""CREATE DATABASE ${Db.Name} OWNER ${Db.Role} ENCODING 'utf8' TEMPLATE template1""")
+          stmt.execute(s"""CREATE DATABASE revenj ENCODING 'utf8' TEMPLATE template1""")
         } finally {
           stmt.close()
         }
@@ -703,7 +683,7 @@ object DbCheck {
       context.put(Force.INSTANCE, "")
       context.put(ApplyMigration.INSTANCE, "")
       context.put(DisablePrompt.INSTANCE, "")
-      context.put(PostgresConnection.INSTANCE, s"${Db.Address}:${Db.Port}/${Db.Name}?user=${Db.Role}&password=${Db.Pass}")
+      context.put(PostgresConnection.INSTANCE, s"localhost:${postgres.getPort}/revenj?user=postgres&password=postgres")
       val file = getClass.getResource("/model.dsl")
       context.put(DslPath.INSTANCE, file.getFile)
       val params = Main.initializeParameters(context, ".")

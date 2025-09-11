@@ -22,19 +22,22 @@ import org.w3c.dom.Element;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.*;
 
 public class TestProcessingEngine {
 
 	private Container container;
+	private static String url;
 
 	@BeforeClass
-	public static void setupDatabase() throws IOException {
+	public static void setupDatabase() throws IOException, SQLException {
 		Setup.setupDatabase();
+		url = Setup.getUrl();
 	}
 
 	@AfterClass
-	public static void teardownDatabase() {
+	public static void teardownDatabase() throws IOException {
 		Setup.teardownDatabase();
 	}
 
@@ -49,9 +52,7 @@ public class TestProcessingEngine {
 			properties.load(new FileReader(revProps));
 		}
 		PGSimpleDataSource dataSource = new PGSimpleDataSource();
-		dataSource.setUrl("jdbc:postgresql://localhost:5555/revenj");
-		dataSource.setUser("revenj");
-		dataSource.setPassword("revenj");
+		dataSource.setUrl(url);
 		container =
 				Revenj.setup(
 						dataSource,

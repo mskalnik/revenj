@@ -170,7 +170,7 @@ public class S3 {
 			throw new IllegalArgumentException("Can't change bucket name");
 		}
 		try {
-			locator.resolve(S3Repository.class).upload(bucket, key, stream, length, metadata).get();
+			locator.resolve(S3Repository.class).upload(bucket, key, stream, length, name, mimeType, metadata).get();
 		} catch (final InterruptedException | ExecutionException e) {
 			throw new IOException(e);
 		}
@@ -193,7 +193,7 @@ public class S3 {
 		}
 		final ByteArrayInputStream stream = new ByteArrayInputStream(bytes);
 		try {
-			locator.resolve(S3Repository.class).upload(bucket, key, stream, bytes.length, metadata).get();
+			locator.resolve(S3Repository.class).upload(bucket, key, stream, bytes.length, name, mimeType, metadata).get();
 		} catch (final InterruptedException | ExecutionException e) {
 			throw new IOException(e);
 		}

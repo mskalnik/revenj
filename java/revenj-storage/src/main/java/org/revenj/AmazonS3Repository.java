@@ -8,21 +8,23 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.*;
 
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.regions.Region;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.model.DeleteObjectRequest;
-import com.amazonaws.services.s3.model.GetObjectRequest;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
+import org.revenj.storage.S3;
 import org.revenj.storage.S3Repository;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 class AmazonS3Repository implements S3Repository, Closeable {
 	private final String bucketName;
 	private final ExecutorService executorService;
-	private final AmazonS3Client s3Client;
+	private final S3Client s3Client;
 	private final boolean disposeExecutor;
 
 	public AmazonS3Repository(Properties properties, Optional<ExecutorService> executorService) {
@@ -38,10 +40,13 @@ class AmazonS3Repository implements S3Repository, Closeable {
 		if (s3SecretKey == null || s3SecretKey.isEmpty()) {
 			throw new RuntimeException("S3 configuration is missing. Please add revenj.s3-secret");
 		}
-		s3Client = new AmazonS3Client(new BasicAWSCredentials(s3AccessKey, s3SecretKey));
+
+		S3ClientBuilder builder = S3Client.builder()
+				.credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(s3AccessKey, s3SecretKey)));
 		if (s3Region != null) {
-			s3Client.setRegion(Region.getRegion(Regions.fromName(s3Region)));
+			builder.region(Region.of(s3Region));
 		}
+		s3Client = builder.build();
 	}
 
 	private String getBucketName(final String name) throws IOException {
@@ -55,37 +60,48 @@ class AmazonS3Repository implements S3Repository, Closeable {
 
 	@Override
 	public Future<InputStream> get(final String bucket, final String key) {
-		return executorService.submit(() -> {
-			S3Object s3 = s3Client.getObject(new GetObjectRequest(bucket, key));
-			return s3.getObjectContent();
-		});
+		return executorService.submit(() ->
+			s3Client.getObject(GetObjectRequest.builder()
+					.bucket(bucket)
+					.key(key)
+					.build())
+		);
 	}
 
 	@Override
-	public Future<Void> upload(
+	public Future<S3> upload(
 			String bucket,
 			String key,
 			InputStream stream,
 			long length,
+			String name,
+			String mimeType,
 			Map<String, String> metadata) {
 		return executorService.submit(() -> {
-			ObjectMetadata om = new ObjectMetadata();
-			om.setContentLength(length);
-			if (metadata != null) {
-				for (final Map.Entry<String, String> kv : metadata.entrySet()) {
-					om.addUserMetadata(kv.getKey(), kv.getValue());
-				}
+			String bn = getBucketName(bucket);
+			PutObjectRequest.Builder builder = PutObjectRequest.builder()
+					.bucket(bn)
+					.key(key)
+					.contentLength(length);
+			if (metadata != null && !metadata.isEmpty()) {
+				builder.metadata(metadata);
 			}
-			s3Client.putObject(new PutObjectRequest(getBucketName(bucket), key, stream, om));
-			return null;
+			if (mimeType != null && !mimeType.isEmpty()) {
+				builder.contentType(mimeType);
+			}
+			s3Client.putObject(builder.build(), RequestBody.fromInputStream(stream, length));
+			return new S3(bn, key, length, name, mimeType, metadata);
 		});
 	}
 
 	@Override
-	public Future<Void> delete(String bucket, String key) {
+	public Future<DeleteObjectResponse> delete(String bucket, String key) {
 		return executorService.submit(() -> {
-			s3Client.deleteObject(new DeleteObjectRequest(getBucketName(bucket), key));
-			return null;
+			DeleteObjectRequest request = DeleteObjectRequest.builder()
+					.bucket(bucket)
+					.key(key)
+					.build();
+			return s3Client.deleteObject(request);
 		});
 	}
 

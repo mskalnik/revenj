@@ -25,7 +25,6 @@ import gen.model.stock.converters.AnalysisConverter;
 import gen.model.test.*;
 import gen.model.test.Composite;
 import gen.model.test.repositories.*;
-import org.joda.time.DateTime;
 import org.junit.Assert;
 import org.junit.Test;
 import org.revenj.handlers.ClickedCollectionEventHandler;
