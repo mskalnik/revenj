@@ -153,7 +153,14 @@ export const fromMachineFormat = (numberString: number | string, pattern: string
   const hasDecimalSeparator = format.decimalSeparator != null && format.decimalSeparator !== '';
 
   if (format.precision === 0 && !hasDecimalSeparator && numberString != null) {
-    return String(numberString).replace(/\.0+$/g, '');
+    const str = String(numberString);
+    const groupSize = format.groupSize ?? 0;
+
+    if (format.groupSeparator === '.' && groupSize > 1) {
+      return str.replace(new RegExp(`\\.0{1,${groupSize - 1}}$`), '');
+    }
+
+    return str.replace(/\.0+$/g, '');
   }
 
   return String(numberString);
